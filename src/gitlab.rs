@@ -23,7 +23,6 @@ pub struct ProjectMeta {
     pub path_with_namespace: String,
     pub web_url: String,
     pub default_branch: String,
-    pub last_activity_at: String,
 }
 
 pub fn fetch_project_meta(
@@ -38,34 +37,6 @@ pub fn fetch_project_meta(
         urlencoding::encode(project),
     );
     send_json(client, &url, token)
-}
-
-// ---------- /projects/:id/repository/branches/:branch ----------
-
-pub fn fetch_branch_sha(
-    client: &Client,
-    base_url: &str,
-    project: &str,
-    token: Option<&str>,
-    branch: &str,
-) -> Result<String, Box<dyn Error>> {
-    #[derive(Deserialize)]
-    struct BranchResp {
-        commit: BranchCommit,
-    }
-    #[derive(Deserialize)]
-    struct BranchCommit {
-        id: String,
-    }
-
-    let url = format!(
-        "{}/api/v4/projects/{}/repository/branches/{}",
-        base_url.trim_end_matches('/'),
-        urlencoding::encode(project),
-        urlencoding::encode(branch),
-    );
-    let resp: BranchResp = send_json(client, &url, token)?;
-    Ok(resp.commit.id)
 }
 
 // ---------- /projects/:id/repository/files/:path ----------

@@ -1,0 +1,311 @@
+/* repo-tracker overrides on top of water.css */
+
+:root {
+  --accent: #4a90e2;
+  --accent-hover: #2d6cb3;
+  --code-bg: #f4f6f8;
+  --code-border: #e2e6ea;
+  --line-no-color: #b0b6bd;
+  --row-hover: rgba(74, 144, 226, 0.08);
+  --zebra: rgba(0, 0, 0, 0.02);
+  --highlight: #fff3a3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #6aa8ff;
+    --accent-hover: #9cc3ff;
+    --code-bg: #1c2127;
+    --code-border: #2d343c;
+    --line-no-color: #5a6470;
+    --row-hover: rgba(106, 168, 255, 0.10);
+    --zebra: rgba(255, 255, 255, 0.03);
+    --highlight: #4a3f00;
+  }
+}
+
+body { max-width: 1100px; }
+
+/* ---------- header ---------- */
+header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 0 1rem;
+  border-bottom: 1px solid var(--code-border);
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+header h1 a { text-decoration: none; color: inherit; }
+header nav {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+header nav a {
+  font-size: 0.9rem;
+  text-decoration: none;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  color: inherit;
+  opacity: 0.75;
+}
+header nav a:hover {
+  background: var(--row-hover);
+  opacity: 1;
+}
+header nav a.active {
+  background: var(--accent);
+  color: white;
+  opacity: 1;
+}
+header nav a.active:hover {
+  background: var(--accent-hover);
+}
+
+/* ---------- main ---------- */
+main { padding-top: 0; }
+
+main h2 {
+  margin-top: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+main h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-light, #999);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 1.5rem;
+}
+
+main section { margin-bottom: 1.5rem; }
+
+.crumbs {
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+.crumbs a { text-decoration: none; opacity: 0.7; }
+.crumbs a:hover { opacity: 1; }
+
+.meta {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  margin-top: 0.25rem;
+}
+.meta code { font-size: 0.85em; }
+
+/* ---------- footer ---------- */
+footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--code-border);
+  opacity: 0.6;
+  font-size: 0.8rem;
+}
+
+/* ---------- search form ---------- */
+.search-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 8px;
+}
+.search-form input[type="text"] {
+  grid-column: 1;
+  font-size: 1rem;
+  margin: 0;
+}
+.search-form button {
+  grid-column: 2;
+  margin: 0;
+}
+.search-form fieldset {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+}
+.search-form fieldset legend {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  padding: 0 0.4rem;
+}
+.search-form fieldset label,
+.search-form > label.cs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  margin: 0;
+}
+.search-form > label.cs {
+  grid-column: 1 / -1;
+}
+
+/* ---------- filter form (lightweight, inline above tables) ---------- */
+.filter-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+}
+.filter-form input[type="text"] {
+  flex: 1;
+  margin: 0;
+  font-size: 0.9rem;
+}
+.filter-form select {
+  margin: 0;
+  font-size: 0.9rem;
+  min-width: 10rem;
+}
+.filter-count {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- tables ---------- */
+table {
+  width: 100%;
+  font-size: 0.9rem;
+  border-collapse: collapse;
+}
+th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  opacity: 0.7;
+  text-align: left;
+  border-bottom: 1px solid var(--code-border);
+  padding: 0.5rem 0.75rem;
+}
+td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--code-border);
+}
+tbody tr:nth-child(even) { background: var(--zebra); }
+tbody tr:hover { background: var(--row-hover); }
+td.path, th.path { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85rem; }
+td.count, th.count { text-align: right; width: 4rem; }
+
+a { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+
+/* ---------- search results / match cards ---------- */
+.match {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.85rem;
+  border-left: 3px solid var(--accent);
+  background: var(--code-bg);
+  border-radius: 0 6px 6px 0;
+}
+.match-header {
+  font-size: 0.8rem;
+  margin-bottom: 0.3rem;
+  opacity: 0.85;
+}
+.match-header .kind {
+  display: inline-block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--accent);
+  color: white;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  margin-right: 0.25rem;
+}
+.match-header .path { font-family: ui-monospace, monospace; }
+.match pre {
+  margin: 0;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+.match pre mark {
+  background: var(--highlight);
+  padding: 0 0.1rem;
+  border-radius: 2px;
+}
+
+/* ---------- stub / status ---------- */
+.stub {
+  display: inline-block;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  border: 1px dashed var(--code-border);
+  border-radius: 4px;
+  opacity: 0.7;
+  background: var(--code-bg);
+}
+
+/* ---------- code block (file_detail) ---------- */
+pre.code {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 8px;
+  padding: 0.75rem 0;
+  margin: 0.75rem 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  overflow-x: auto;
+  max-height: 36rem;
+  overflow-y: auto;
+}
+pre.code code {
+  display: block;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  counter-reset: ln;
+  white-space: pre;
+}
+pre.code .ln {
+  display: block;
+  padding: 0 1rem 0 3.5rem;
+  position: relative;
+  counter-increment: ln;
+}
+pre.code .ln::before {
+  content: counter(ln);
+  position: absolute;
+  left: 0;
+  width: 2.75rem;
+  text-align: right;
+  color: var(--line-no-color);
+  user-select: none;
+}
+pre.code .ln:hover { background: var(--row-hover); }
+
+/* file path heading: 折り返し許容 */
+h2.path {
+  font-family: ui-monospace, monospace;
+  font-size: 1.1rem;
+  word-break: break-all;
+}

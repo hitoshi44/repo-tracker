@@ -12,12 +12,9 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Repository {
     pub id: u64,
-    pub path_with_namespace: String,
+    pub path: String,
     pub name: String,
-    pub web_url: String,
-    pub default_branch: String,
-    pub default_branch_sha: String,
-    pub last_activity_at: String,
+    pub url: String,
     pub fetched_at: String,
     pub files: Vec<RepoFileRef>,
 }
@@ -209,10 +206,13 @@ pub struct CiJob {
     pub script: Vec<String>,
 }
 
-// ---------- ci-raws.json ----------
+// ---------- *-raws.json (ci / pkg / pom) ----------
+//
+// 3 種類とも構造は同じ。種別はファイル名 (ci-raws.json 等) で分かるので
+// 共通の `RawEntry` を再利用する。
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CiRawEntry {
+pub struct RawEntry {
     pub repo_id: u64,
     pub path: String,
     pub raw: String,
