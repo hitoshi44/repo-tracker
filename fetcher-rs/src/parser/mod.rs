@@ -1,9 +1,10 @@
-// 3 種類のファイル形式 → ParsedFile 変換。
+// kind 別の raw → ParsedFile 変換。
 //
-// 入力 raw 文字列を受け取り、構造化された ParsedFile を返す。
-// malformed なら Err（DESIGN「失敗したら全体を失敗扱い」に従う）。
+// Dockerfile はパースしない (raw のみ保持)。
+// その他 3 種類は構造化を試みる。失敗時のハンドリングは呼び出し側 (main.rs) で
+// 「warning を出して empty parsed で続行」する。
 
-use crate::model::{FileKind, ParsedFile};
+use crate::model::{FileKind, ParsedFile, ParsedUnstructured};
 use std::error::Error;
 
 pub mod gitlab_ci;
@@ -15,5 +16,6 @@ pub fn parse(kind: FileKind, raw: &str) -> Result<ParsedFile, Box<dyn Error>> {
         FileKind::PackageJson => ParsedFile::PackageJson(package_json::parse(raw)?),
         FileKind::PomXml => ParsedFile::PomXml(pom_xml::parse(raw)?),
         FileKind::GitlabCi => ParsedFile::GitlabCi(gitlab_ci::parse(raw)?),
+        FileKind::Dockerfile => ParsedFile::Unstructured(ParsedUnstructured {}),
     })
 }

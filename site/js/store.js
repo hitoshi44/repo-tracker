@@ -18,10 +18,11 @@ async function loadJson(name) {
   return p;
 }
 
-export function loadRepos()    { return loadJson('repos.json'); }
-export function loadCiRaws()   { return loadJson('ci-raws.json'); }
-export function loadPkgRaws()  { return loadJson('pkg-raws.json'); }
-export function loadPomRaws()  { return loadJson('pom-raws.json'); }
+export function loadRepos()      { return loadJson('repos.json'); }
+export function loadCiRaws()     { return loadJson('ci-raws.json'); }
+export function loadPkgRaws()    { return loadJson('pkg-raws.json'); }
+export function loadPomRaws()    { return loadJson('pom-raws.json'); }
+export function loadDockerRaws() { return loadJson('docker-raws.json'); }
 export function loadFile(repoId, path) {
   return loadJson(`files/${repoId}/${path}.json`);
 }

@@ -1,17 +1,18 @@
-import { loadCiRaws, loadPkgRaws, loadPomRaws } from '../store.js';
+import { loadCiRaws, loadPkgRaws, loadPomRaws, loadDockerRaws } from '../store.js';
 import { grep, highlightPositions } from '../grep.js';
 import { html, escapeHtml, raw } from '../render.js';
 import { buildQuery } from '../router.js';
 
 const GREP_KINDS = [
-  { id: 'ci',  label: '.gitlab-ci.yml' },
-  { id: 'pkg', label: 'package.json' },
-  { id: 'pom', label: 'pom.xml' },
+  { id: 'ci',     label: '.gitlab-ci.yml' },
+  { id: 'pkg',    label: 'package.json' },
+  { id: 'pom',    label: 'pom.xml' },
+  { id: 'docker', label: 'Dockerfile' },
 ];
 
 export async function render(_params, query) {
   const q             = query.q || '';
-  const enabledKinds  = (query.kinds || 'ci,pkg,pom').split(',').filter(Boolean);
+  const enabledKinds  = (query.kinds || 'ci,pkg,pom,docker').split(',').filter(Boolean);
   const caseSensitive = query.cs === '1';
 
   const form = renderForm({ q, enabledKinds, caseSensitive });
@@ -44,9 +45,10 @@ function renderForm({ q, enabledKinds, caseSensitive }) {
 
 async function renderGrepResults(q, enabledKinds, caseSensitive) {
   const sources = [];
-  if (enabledKinds.includes('ci'))  sources.push({ kind: 'ci',  entries: await loadCiRaws() });
-  if (enabledKinds.includes('pkg')) sources.push({ kind: 'pkg', entries: await loadPkgRaws() });
-  if (enabledKinds.includes('pom')) sources.push({ kind: 'pom', entries: await loadPomRaws() });
+  if (enabledKinds.includes('ci'))     sources.push({ kind: 'ci',     entries: await loadCiRaws() });
+  if (enabledKinds.includes('pkg'))    sources.push({ kind: 'pkg',    entries: await loadPkgRaws() });
+  if (enabledKinds.includes('pom'))    sources.push({ kind: 'pom',    entries: await loadPomRaws() });
+  if (enabledKinds.includes('docker')) sources.push({ kind: 'docker', entries: await loadDockerRaws() });
 
   const hits = grep(sources, q, { caseSensitive });
   if (hits.length === 0) return `<p>マッチなし</p>`;

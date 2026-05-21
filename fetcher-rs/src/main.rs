@@ -6,7 +6,7 @@ mod parser;
 
 use chrono::Utc;
 use config::{load_config, load_repos, resolve_relative};
-use model::{FileKind, RawEntry, Repository, TrackedFile};
+use model::{FileKind, ParsedFile, RawEntry, Repository, TrackedFile};
 use serde::Serialize;
 use std::env;
 use std::fs;
@@ -30,7 +30,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let token = env::var(&cfg.gitlab.token_env).ok();
     let base_url = cfg.gitlab.url.trim_end_matches('/');
-    let targets = [".gitlab-ci.yml", "package.json", "pom.xml"];
+    let targets = [".gitlab-ci.yml", "package.json", "pom.xml", "Dockerfile"];
 
     let client = gitlab::build_client()?;
     let fetched_at = Utc::now().to_rfc3339();
@@ -42,6 +42,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut ci_raws: Vec<RawEntry> = Vec::new();
     let mut pkg_raws: Vec<RawEntry> = Vec::new();
     let mut pom_raws: Vec<RawEntry> = Vec::new();
+    let mut docker_raws: Vec<RawEntry> = Vec::new();
     let mut file_count = 0usize;
 
     println!("config: {}", config_path.display());
@@ -82,10 +83,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 FileKind::GitlabCi => ci_raws.push(raw_entry),
                 FileKind::PackageJson => pkg_raws.push(raw_entry),
                 FileKind::PomXml => pom_raws.push(raw_entry),
+                FileKind::Dockerfile => docker_raws.push(raw_entry),
             }
-            // DESIGN「失敗したら全体失敗」に従い、parse エラーは伝播させる。
-            let parsed = parser::parse(f.kind, &raw.raw)
-                .map_err(|e| format!("parse {} ({:?}): {e}", f.path, f.kind))?;
+            // parse 失敗時は警告して empty parsed で続行 (raw のみ保存)。
+            // DESIGN「全体失敗」は緩めて、現実の pom.xml の方言などで他 repo まで巻き込まないようにした。
+            let parsed = match parser::parse(f.kind, &raw.raw) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!(
+                        "warning: parse {} ({:?}) failed: {e} — raw のみで続行",
+                        f.path, f.kind
+                    );
+                    ParsedFile::empty(f.kind)
+                }
+            };
             let tracked = TrackedFile {
                 repo_id: meta.id,
                 path: f.path.clone(),
@@ -136,13 +147,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         out_dir.join("pom-raws.json"),
         serde_json::to_string_pretty(&pom_raws)?,
     )?;
+    fs::write(
+        out_dir.join("docker-raws.json"),
+        serde_json::to_string_pretty(&docker_raws)?,
+    )?;
 
     println!(
-        "wrote {}: repos.json, ci-raws.json ({}), pkg-raws.json ({}), pom-raws.json ({}), and {} file(s) under files/",
+        "wrote {}: repos.json, ci-raws.json ({}), pkg-raws.json ({}), pom-raws.json ({}), docker-raws.json ({}), and {} file(s) under files/",
         out_dir.display(),
         ci_raws.len(),
         pkg_raws.len(),
         pom_raws.len(),
+        docker_raws.len(),
         file_count
     );
     for r in &repos_json.repos {

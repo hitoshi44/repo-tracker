@@ -53,7 +53,7 @@ func run() error {
 
 	baseURL := strings.TrimRight(cfg.GitLab.URL, "/")
 	token := os.Getenv(cfg.GitLab.TokenEnv)
-	targets := []string{".gitlab-ci.yml", "package.json", "pom.xml"}
+	targets := []string{".gitlab-ci.yml", "package.json", "pom.xml", "Dockerfile"}
 	client := gitlab.New(token)
 
 	fetchedAt := time.Now().UTC().Format(time.RFC3339)
@@ -67,6 +67,7 @@ func run() error {
 		ciRaws       []model.RawEntry
 		pkgRaws      []model.RawEntry
 		pomRaws      []model.RawEntry
+		dockerRaws   []model.RawEntry
 		fileCount    int
 	)
 
@@ -94,11 +95,17 @@ func run() error {
 				pkgRaws = append(pkgRaws, rawEntry)
 			case model.KindPomXml:
 				pomRaws = append(pomRaws, rawEntry)
+			case model.KindDockerfile:
+				dockerRaws = append(dockerRaws, rawEntry)
 			}
 
+			// parse 失敗時は警告して empty parsed で続行 (raw のみ保存)。
 			parsed, err := parser.Parse(f.Type, raw.Raw)
 			if err != nil {
-				return fmt.Errorf("parse %s (%s): %w", f.Path, f.Type, err)
+				fmt.Fprintf(os.Stderr,
+					"warning: parse %s (%s) failed: %v — raw のみで続行\n",
+					f.Path, f.Type, err)
+				parsed = model.ParsedFor(f.Type)
 			}
 			tracked := model.TrackedFile{
 				RepoID:  meta.ID,
@@ -139,9 +146,12 @@ func run() error {
 	if err := writeJSON(filepath.Join(outDir, "pom-raws.json"), nonNilSlice(pomRaws)); err != nil {
 		return err
 	}
+	if err := writeJSON(filepath.Join(outDir, "docker-raws.json"), nonNilSlice(dockerRaws)); err != nil {
+		return err
+	}
 
-	fmt.Printf("wrote %s: repos.json, ci-raws.json (%d), pkg-raws.json (%d), pom-raws.json (%d), and %d file(s) under files/\n",
-		outDir, len(ciRaws), len(pkgRaws), len(pomRaws), fileCount)
+	fmt.Printf("wrote %s: repos.json, ci-raws.json (%d), pkg-raws.json (%d), pom-raws.json (%d), docker-raws.json (%d), and %d file(s) under files/\n",
+		outDir, len(ciRaws), len(pkgRaws), len(pomRaws), len(dockerRaws), fileCount)
 	for _, r := range repositories {
 		fmt.Printf("  %s (%d file(s))\n", r.Path, len(r.Files))
 	}

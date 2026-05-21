@@ -181,6 +181,7 @@ fn classify(name: &str) -> Option<FileKind> {
         "package.json" => Some(FileKind::PackageJson),
         "pom.xml" => Some(FileKind::PomXml),
         ".gitlab-ci.yml" => Some(FileKind::GitlabCi),
+        "Dockerfile" => Some(FileKind::Dockerfile),
         _ => None,
     }
 }

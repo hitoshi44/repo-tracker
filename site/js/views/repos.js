@@ -9,9 +9,10 @@ export async function render() {
     return html`
       <tr>
         <td class="path"><a href="#/repo/${r.id}">${r.path}</a></td>
-        <td class="count">${counts.ci  || ''}</td>
-        <td class="count">${counts.pkg || ''}</td>
-        <td class="count">${counts.pom || ''}</td>
+        <td class="count">${counts.ci     || ''}</td>
+        <td class="count">${counts.pkg    || ''}</td>
+        <td class="count">${counts.pom    || ''}</td>
+        <td class="count">${counts.docker || ''}</td>
         <td><a href="${r.url}" rel="noopener noreferrer" target="_blank">GitLab</a></td>
       </tr>`;
   }).join('');
@@ -24,20 +25,21 @@ export async function render() {
       <h2>リポジトリ一覧</h2>
       <table>
         <thead>
-          <tr><th>repo</th><th class="count">ci</th><th class="count">pkg</th><th class="count">pom</th><th></th></tr>
+          <tr><th>repo</th><th class="count">ci</th><th class="count">pkg</th><th class="count">pom</th><th class="count">docker</th><th></th></tr>
         </thead>
-        <tbody>${rows || `<tr><td colspan="5">(no repos)</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="6">(no repos)</td></tr>`}</tbody>
       </table>
     </section>
   `;
 }
 
 function countByKind(files) {
-  const out = { ci: 0, pkg: 0, pom: 0 };
+  const out = { ci: 0, pkg: 0, pom: 0, docker: 0 };
   for (const f of files) {
-    if (f.type === 'gitlab-ci')  out.ci++;
+    if (f.type === 'gitlab-ci')         out.ci++;
     else if (f.type === 'package-json') out.pkg++;
     else if (f.type === 'pom-xml')      out.pom++;
+    else if (f.type === 'dockerfile')   out.docker++;
   }
   return out;
 }

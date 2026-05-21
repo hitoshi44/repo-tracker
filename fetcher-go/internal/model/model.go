@@ -12,6 +12,7 @@ const (
 	KindPackageJson = "package-json"
 	KindPomXml      = "pom-xml"
 	KindGitlabCi    = "gitlab-ci"
+	KindDockerfile  = "dockerfile"
 )
 
 // ---------- Repository / repos.json ----------
@@ -166,6 +167,9 @@ type CiJob struct {
 	Script  []string `json:"script"`
 }
 
+// ParsedUnstructured: 構造化しない kind (Dockerfile) 用の空 parsed。JSON では `{}`。
+type ParsedUnstructured struct{}
+
 // ParsedFor は kind に応じて初期化済みの parsed 構造体を返す。
 func ParsedFor(kind string) interface{} {
 	switch kind {
@@ -175,6 +179,8 @@ func ParsedFor(kind string) interface{} {
 		return NewParsedPomXml()
 	case KindGitlabCi:
 		return NewParsedGitlabCi()
+	case KindDockerfile:
+		return ParsedUnstructured{}
 	}
 	return nil
 }
@@ -188,6 +194,8 @@ func ClassifyFileName(name string) (string, bool) {
 		return KindPomXml, true
 	case ".gitlab-ci.yml":
 		return KindGitlabCi, true
+	case "Dockerfile":
+		return KindDockerfile, true
 	}
 	return "", false
 }

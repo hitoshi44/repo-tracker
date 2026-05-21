@@ -39,9 +39,9 @@ GitLab API を使って、複数リポジトリの `.gitlab-ci.yml` / `package.j
 | ブランチ | default branch のみ |
 | ファイル探索 | tree API を深さ N まで GET。デフォルト N=1 (root + root 直下の tree)。repo ごとに `depth: N` で上書き可 |
 | ページング | しない。1 階層あたり 100 件超は非対応 (per_page=100 固定) |
-| 拾うファイル | `.gitlab-ci.yml`, `package.json`, `pom.xml` |
+| 拾うファイル | `.gitlab-ci.yml`, `package.json`, `pom.xml`, `Dockerfile` |
 | レート制御 | 1 fetch ごとに 1 秒 sleep |
-| エラー処理 | どこかが失敗したら全体を失敗扱い。S3 への部分書き込みはしない |
+| エラー処理 | API 呼び出し (HTTP) が失敗したら全体を失敗扱い。S3 への部分書き込みはしない。**parse 失敗は warning を出して raw のみ保存して続行** (pom.xml の方言で 1 ファイルが落ちて全 repo を巻き込むのを避けるため) |
 | 履歴 | 持たない。毎回 S3 を上書き |
 
 探索範囲のイメージ (depth=1): `repo/package.json`, `repo/frontend/package.json` は拾う。`repo/services/api/backend/pom.xml` のような 2 階層以上は拾わない。特定 repo だけ深く掘りたい場合は config 側で `depth` を上書きする。
@@ -90,6 +90,7 @@ s3://bucket/
     ci-raws.json                    # 全 .gitlab-ci.yml の raw をバンドル（全文検索用）
     pkg-raws.json                   # 全 package.json   の raw をバンドル（全文検索用）
     pom-raws.json                   # 全 pom.xml       の raw をバンドル（全文検索用）
+    docker-raws.json                # 全 Dockerfile    の raw をバンドル（全文検索用）
 ```
 
 ローカルでは `site/` 配下が同じレイアウト (`site/data/*.json` 等) になる。
@@ -298,6 +299,7 @@ JSON フォーマットは互換 (Repository / TrackedFile / RawEntry / Parsed*)
 | `package.json` | `PackageJson` |
 | `pom.xml` | `PomXml` |
 | `.gitlab-ci.yml` | `GitlabCi` |
+| `Dockerfile` | `Dockerfile` (構造化しない、raw のみ) |
 
 `gitlab::list_tracked_files` の `targets: &[&str]` で「拾うファイル名のリスト」を呼び出し側から渡せる。種別分類は内部の `classify` が担当。
 

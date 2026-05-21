@@ -32,6 +32,7 @@ pub enum FileKind {
     PackageJson,
     PomXml,
     GitlabCi,
+    Dockerfile,
 }
 
 // ---------- TrackedFile / files/<repo_id>/<path>.json ----------
@@ -56,7 +57,12 @@ pub enum ParsedFile {
     PackageJson(ParsedPackageJson),
     PomXml(ParsedPomXml),
     GitlabCi(ParsedGitlabCi),
+    // 構造化しないファイル (現状 Dockerfile)。JSON では `{}`。
+    Unstructured(ParsedUnstructured),
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ParsedUnstructured {}
 
 impl ParsedFile {
     pub fn empty(kind: FileKind) -> Self {
@@ -64,6 +70,7 @@ impl ParsedFile {
             FileKind::PackageJson => ParsedFile::PackageJson(Default::default()),
             FileKind::PomXml => ParsedFile::PomXml(Default::default()),
             FileKind::GitlabCi => ParsedFile::GitlabCi(Default::default()),
+            FileKind::Dockerfile => ParsedFile::Unstructured(Default::default()),
         }
     }
 }
