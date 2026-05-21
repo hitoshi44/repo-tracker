@@ -11,7 +11,12 @@ use std::thread;
 use std::time::Duration;
 
 pub fn build_client() -> Result<Client, Box<dyn Error>> {
-    Ok(Client::builder().user_agent("repo-tracker/0.1").build()?)
+    // 明示的に rustls を選ぶ。reqwest がデフォルトで OS の TLS スタックを掴むのを
+    // 防ぎたい (Windows の schannel + 社内プロキシで CRL/OCSP 取得が失敗するため)。
+    Ok(Client::builder()
+        .use_rustls_tls()
+        .user_agent("repo-tracker/0.1")
+        .build()?)
 }
 
 // ---------- /projects/:id ----------

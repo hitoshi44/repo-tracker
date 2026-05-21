@@ -5,12 +5,12 @@ mod gitlab;
 mod parser;
 
 use chrono::Utc;
-use config::{load_config, load_repos, resolve_repos_path};
+use config::{load_config, load_repos, resolve_relative};
 use model::{FileKind, RawEntry, Repository, TrackedFile};
 use serde::Serialize;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[derive(Serialize)]
@@ -22,7 +22,7 @@ struct ReposJson {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config_path: PathBuf = env::args().nth(1).unwrap_or_else(|| "config.yml".into()).into();
     let cfg = load_config(&config_path)?;
-    let repos_path = resolve_repos_path(&config_path, &cfg.repos_file);
+    let repos_path = resolve_relative(&config_path, &cfg.repos_file);
     let entries = load_repos(&repos_path, cfg.defaults.nest, &cfg.gitlab.url)?;
     if entries.is_empty() {
         return Err(format!("no repos in {}", repos_path.display()).into());
@@ -35,8 +35,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let client = gitlab::build_client()?;
     let fetched_at = Utc::now().to_rfc3339();
 
-    let out_dir = Path::new("site/data");
-    fs::create_dir_all(out_dir)?;
+    let out_dir = resolve_relative(&config_path, &cfg.output_dir);
+    fs::create_dir_all(&out_dir)?;
 
     let mut repositories: Vec<Repository> = Vec::with_capacity(entries.len());
     let mut ci_raws: Vec<RawEntry> = Vec::new();
@@ -46,6 +46,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("config: {}", config_path.display());
     println!("repos:  {} ({} entries)", repos_path.display(), entries.len());
+    println!("output: {}", out_dir.display());
 
     for entry in &entries {
         let meta = gitlab::fetch_project_meta(&client, base_url, &entry.path, token.as_deref())?;
@@ -135,7 +136,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     println!(
-        "wrote site/data/repos.json, site/data/ci-raws.json ({}), site/data/pkg-raws.json ({}), site/data/pom-raws.json ({}), and {} file(s) under site/data/files/",
+        "wrote {}: repos.json, ci-raws.json ({}), pkg-raws.json ({}), pom-raws.json ({}), and {} file(s) under files/",
+        out_dir.display(),
         ci_raws.len(),
         pkg_raws.len(),
         pom_raws.len(),

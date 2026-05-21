@@ -1,0 +1,151 @@
+// Package config: config.yml + repos.csv 読み込み。
+// Rust 版 (fetcher-rs/src/config.rs) と同じ形式。
+package config
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+type AppConfig struct {
+	GitLab    GitLabCfg `yaml:"gitlab"`
+	Defaults  Defaults  `yaml:"defaults"`
+	ReposFile string    `yaml:"repos_file"`
+	OutputDir string    `yaml:"output_dir"`
+}
+
+type GitLabCfg struct {
+	URL      string `yaml:"url"`
+	TokenEnv string `yaml:"token_env"`
+}
+
+type Defaults struct {
+	Nest uint32 `yaml:"nest"`
+}
+
+type RepoEntry struct {
+	ID   string // GitLab project id (パススルー、fetcher は使わない)
+	Path string // group/repo
+	Nest uint32
+}
+
+// デフォルト値。yaml が省略しているフィールドに適用する。
+const (
+	defaultNest      = uint32(1)
+	defaultOutputDir = "site/data"
+)
+
+func LoadConfig(path string) (*AppConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var cfg AppConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if cfg.Defaults.Nest == 0 {
+		cfg.Defaults.Nest = defaultNest
+	}
+	if cfg.OutputDir == "" {
+		cfg.OutputDir = defaultOutputDir
+	}
+	if cfg.ReposFile == "" {
+		return nil, fmt.Errorf("%s: repos_file is required", path)
+	}
+	if cfg.GitLab.URL == "" {
+		return nil, fmt.Errorf("%s: gitlab.url is required", path)
+	}
+	return &cfg, nil
+}
+
+// ResolveRelative: 相対パスを configPath のディレクトリ基準で解決する。
+func ResolveRelative(configPath, value string) string {
+	if filepath.IsAbs(value) {
+		return value
+	}
+	base := filepath.Dir(configPath)
+	if base == "" {
+		base = "."
+	}
+	return filepath.Join(base, value)
+}
+
+// LoadRepos: ファイルを読んで ParseReposLines に渡すだけ。
+func LoadRepos(filePath string, defaultNest uint32, gitlabURL string) ([]RepoEntry, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", filePath, err)
+	}
+	entries, err := ParseReposLines(string(data), defaultNest, gitlabURL)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", filePath, err)
+	}
+	return entries, nil
+}
+
+// ParseReposLines: `id,url[,nest]` 行リストを解釈 (純関数)。
+// # 始まりの行と空行はスキップ。列数 2 か 3 以外、または nest がパースできない、
+// または url が gitlabURL 配下でない場合エラー。
+func ParseReposLines(text string, defaultNest uint32, gitlabURL string) ([]RepoEntry, error) {
+	var out []RepoEntry
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		s := strings.TrimSpace(line)
+		if s == "" || strings.HasPrefix(s, "#") {
+			continue
+		}
+		parts := strings.Split(s, ",")
+		if len(parts) != 2 && len(parts) != 3 {
+			return nil, fmt.Errorf(
+				"line %d: expected 'id,url[,nest]' (2 or 3 fields), got %d fields",
+				i+1, len(parts))
+		}
+		for j := range parts {
+			parts[j] = strings.TrimSpace(parts[j])
+		}
+		id, url := parts[0], parts[1]
+		nest := defaultNest
+		if len(parts) == 3 {
+			n, err := strconv.ParseUint(parts[2], 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("line %d: nest: %w", i+1, err)
+			}
+			nest = uint32(n)
+		}
+		if id == "" {
+			return nil, fmt.Errorf("line %d: empty id", i+1)
+		}
+		path, err := UrlToPath(url, gitlabURL)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", i+1, err)
+		}
+		out = append(out, RepoEntry{ID: id, Path: path, Nest: nest})
+	}
+	return out, nil
+}
+
+// UrlToPath: `https://gitlab.com/group/repo[.git][/]` → `group/repo`。
+// gitlabURL の prefix を剥がし、末尾 `/` と `.git` を落とす。
+func UrlToPath(url, gitlabURL string) (string, error) {
+	url = strings.TrimSpace(url)
+	base := strings.TrimRight(strings.TrimSpace(gitlabURL), "/")
+	stripped, ok := strings.CutPrefix(url, base)
+	if !ok {
+		return "", fmt.Errorf("url %q does not start with gitlab url %q", url, base)
+	}
+	cleaned := strings.TrimLeft(stripped, "/")
+	cleaned = strings.TrimRight(cleaned, "/")
+	cleaned = strings.TrimSuffix(cleaned, ".git")
+	cleaned = strings.TrimRight(cleaned, "/")
+	if cleaned == "" {
+		return "", errors.New(fmt.Sprintf("url %q extracted to empty path", url))
+	}
+	return cleaned, nil
+}

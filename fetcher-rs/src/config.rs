@@ -17,6 +17,20 @@ pub struct AppConfig {
     #[serde(default)]
     pub defaults: Defaults,
     pub repos_file: String,
+    #[serde(default = "default_output_dir")]
+    pub output_dir: String,
+}
+
+fn default_output_dir() -> String { "site/data".to_string() }
+
+/// 相対パスを config_path のディレクトリ基準で解決する汎用ヘルパ。
+pub fn resolve_relative(config_path: &Path, value: &str) -> PathBuf {
+    let p = Path::new(value);
+    if p.is_absolute() {
+        return p.to_path_buf();
+    }
+    let base = config_path.parent().unwrap_or(Path::new("."));
+    base.join(p)
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,16 +66,6 @@ pub fn load_config(path: &Path) -> Result<AppConfig, Box<dyn Error>> {
     Ok(cfg)
 }
 
-/// `cfg.repos_file` を解決する。
-/// 絶対パスならそのまま、相対パスなら config.yml と同じディレクトリ基準。
-pub fn resolve_repos_path(config_path: &Path, repos_file: &str) -> PathBuf {
-    let p = Path::new(repos_file);
-    if p.is_absolute() {
-        return p.to_path_buf();
-    }
-    let base = config_path.parent().unwrap_or(Path::new("."));
-    base.join(p)
-}
 
 pub fn load_repos(
     file_path: &Path,
@@ -208,15 +212,15 @@ mod tests {
         assert_eq!(r[0], RepoEntry { id: "1".into(), path: "g/a".into(), nest: 2 });
     }
 
-    // ---------- resolve_repos_path ----------
+    // ---------- resolve_relative ----------
     #[test]
-    fn resolve_repos_path_relative_to_config_dir() {
-        let p = resolve_repos_path(Path::new("/etc/repo-tracker/config.yml"), "repos.csv");
+    fn resolve_relative_to_config_dir() {
+        let p = resolve_relative(Path::new("/etc/repo-tracker/config.yml"), "repos.csv");
         assert_eq!(p, PathBuf::from("/etc/repo-tracker/repos.csv"));
     }
     #[test]
-    fn resolve_repos_path_absolute_passes_through() {
-        let p = resolve_repos_path(Path::new("/etc/config.yml"), "/var/lib/repos.csv");
+    fn resolve_relative_absolute_passes_through() {
+        let p = resolve_relative(Path::new("/etc/config.yml"), "/var/lib/repos.csv");
         assert_eq!(p, PathBuf::from("/var/lib/repos.csv"));
     }
 }

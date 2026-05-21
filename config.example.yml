@@ -10,3 +10,4 @@ defaults:
   nest: 1                 # repos.csv で nest 省略時のデフォルト深さ
 
 repos_file: repos.csv     # CSV パス (config.yml と同じディレクトリ基準で解決)
+output_dir: site/data     # 出力先 (同上、相対なら config.yml と同じディレクトリ基準)
