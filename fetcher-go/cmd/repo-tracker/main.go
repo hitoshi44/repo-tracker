@@ -38,7 +38,7 @@ func run() error {
 		return err
 	}
 	reposPath := config.ResolveRelative(configPath, cfg.ReposFile)
-	entries, err := config.LoadRepos(reposPath, cfg.Defaults.Nest, cfg.GitLab.URL)
+	entries, err := config.LoadRepos(reposPath, cfg.Defaults.Nest)
 	if err != nil {
 		return err
 	}
@@ -71,19 +71,20 @@ func run() error {
 	)
 
 	for _, entry := range entries {
-		meta, err := client.FetchProjectMeta(baseURL, entry.Path)
+		// GitLab API は id でも path でも :id を受けるので、入力の id を一貫して使う。
+		meta, err := client.FetchProjectMeta(baseURL, entry.ID)
 		if err != nil {
-			return fmt.Errorf("fetch meta %s: %w", entry.Path, err)
+			return fmt.Errorf("fetch meta id=%s (%s): %w", entry.ID, entry.URL, err)
 		}
-		files, err := client.ListTrackedFiles(baseURL, entry.Path, entry.Nest, targets)
+		files, err := client.ListTrackedFiles(baseURL, entry.ID, entry.Nest, targets)
 		if err != nil {
-			return fmt.Errorf("list tracked %s: %w", entry.Path, err)
+			return fmt.Errorf("list tracked id=%s: %w", entry.ID, err)
 		}
 
 		for _, f := range files {
-			raw, err := client.FetchFile(baseURL, meta.PathWithNamespace, meta.DefaultBranch, f.Path)
+			raw, err := client.FetchFile(baseURL, entry.ID, meta.DefaultBranch, f.Path)
 			if err != nil {
-				return fmt.Errorf("fetch file %s/%s: %w", entry.Path, f.Path, err)
+				return fmt.Errorf("fetch file id=%s path=%s: %w", entry.ID, f.Path, err)
 			}
 			rawEntry := model.RawEntry{RepoID: meta.ID, Path: f.Path, Raw: raw.Raw}
 			switch f.Type {

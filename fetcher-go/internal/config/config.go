@@ -29,9 +29,12 @@ type Defaults struct {
 	Nest uint32 `yaml:"nest"`
 }
 
+// RepoEntry: repos.csv 1 行を表す。
+// API 呼び出しは ID を使う (`/api/v4/projects/:id`)。
+// URL は記録用 (将来エラー時のヒントなど、fetcher 内では使わない)。
 type RepoEntry struct {
-	ID   string // GitLab project id (パススルー、fetcher は使わない)
-	Path string // group/repo
+	ID   string
+	URL  string
 	Nest uint32
 }
 
@@ -78,12 +81,12 @@ func ResolveRelative(configPath, value string) string {
 }
 
 // LoadRepos: ファイルを読んで ParseReposLines に渡すだけ。
-func LoadRepos(filePath string, defaultNest uint32, gitlabURL string) ([]RepoEntry, error) {
+func LoadRepos(filePath string, defaultNest uint32) ([]RepoEntry, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", filePath, err)
 	}
-	entries, err := ParseReposLines(string(data), defaultNest, gitlabURL)
+	entries, err := ParseReposLines(string(data), defaultNest)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", filePath, err)
 	}
@@ -91,9 +94,9 @@ func LoadRepos(filePath string, defaultNest uint32, gitlabURL string) ([]RepoEnt
 }
 
 // ParseReposLines: `id,url[,nest]` 行リストを解釈 (純関数)。
-// # 始まりの行と空行はスキップ。列数 2 か 3 以外、または nest がパースできない、
-// または url が gitlabURL 配下でない場合エラー。
-func ParseReposLines(text string, defaultNest uint32, gitlabURL string) ([]RepoEntry, error) {
+// # 始まりの行と空行はスキップ。列数 2 か 3 以外、または nest がパースできない場合エラー。
+// id を使って GitLab API を叩くので url の中身は検証しない (空文字だけは弾く)。
+func ParseReposLines(text string, defaultNest uint32) ([]RepoEntry, error) {
 	var out []RepoEntry
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
@@ -122,11 +125,10 @@ func ParseReposLines(text string, defaultNest uint32, gitlabURL string) ([]RepoE
 		if id == "" {
 			return nil, fmt.Errorf("line %d: empty id", i+1)
 		}
-		path, err := UrlToPath(url, gitlabURL)
-		if err != nil {
-			return nil, fmt.Errorf("line %d: %w", i+1, err)
+		if url == "" {
+			return nil, fmt.Errorf("line %d: empty url", i+1)
 		}
-		out = append(out, RepoEntry{ID: id, Path: path, Nest: nest})
+		out = append(out, RepoEntry{ID: id, URL: url, Nest: nest})
 	}
 	return out, nil
 }

@@ -51,10 +51,13 @@ impl Default for Defaults {
 }
 fn default_nest() -> u32 { 1 }
 
+/// repos.csv 1 行を表す。
+/// API 呼び出しは `id` を使う (`/api/v4/projects/:id`)。
+/// `url` は記録用 (fetcher 内では使わない、エラー時のヒント等)。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoEntry {
-    pub id: String,     // GitLab project id (記録用)。fetcher は使わない
-    pub path: String,   // group/repo
+    pub id: String,
+    pub url: String,
     pub nest: u32,
 }
 
@@ -70,20 +73,19 @@ pub fn load_config(path: &Path) -> Result<AppConfig, Box<dyn Error>> {
 pub fn load_repos(
     file_path: &Path,
     default_nest: u32,
-    gitlab_url: &str,
 ) -> Result<Vec<RepoEntry>, Box<dyn Error>> {
     let raw = fs::read_to_string(file_path)
         .map_err(|e| format!("read {}: {e}", file_path.display()))?;
-    parse_repos_lines(&raw, default_nest, gitlab_url)
+    parse_repos_lines(&raw, default_nest)
         .map_err(|e| format!("{}: {e}", file_path.display()).into())
 }
 
 /// CSV 形式: `id,url[,nest]`。`#` 始まりの行と空行はスキップ。
-/// 列数 2 か 3 以外、または nest がパースできない / url が gitlab_url 配下でない場合エラー。
+/// 列数 2 か 3 以外、または nest がパースできない場合エラー。
+/// id を使って API を叩くので url は検証しない (空文字だけは弾く)。
 pub fn parse_repos_lines(
     text: &str,
     default_nest: u32,
-    gitlab_url: &str,
 ) -> Result<Vec<RepoEntry>, String> {
     let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
@@ -99,7 +101,7 @@ pub fn parse_repos_lines(
             ));
         }
         let id = parts[0].to_string();
-        let url = parts[1];
+        let url = parts[1].to_string();
         let nest = if parts.len() == 3 {
             parts[2].parse::<u32>()
                 .map_err(|e| format!("line {}: nest: {e}", i + 1))?
@@ -109,9 +111,10 @@ pub fn parse_repos_lines(
         if id.is_empty() {
             return Err(format!("line {}: empty id", i + 1));
         }
-        let path = url_to_path(url, gitlab_url)
-            .map_err(|e| format!("line {}: {e}", i + 1))?;
-        out.push(RepoEntry { id, path, nest });
+        if url.is_empty() {
+            return Err(format!("line {}: empty url", i + 1));
+        }
+        out.push(RepoEntry { id, url, nest });
     }
     Ok(out)
 }
@@ -172,44 +175,44 @@ mod tests {
     #[test]
     fn parse_repos_minimal() {
         let csv = "1,https://gitlab.com/g/a\n2,https://gitlab.com/g/b,3\n";
-        let r = parse_repos_lines(csv, 1, "https://gitlab.com").unwrap();
+        let r = parse_repos_lines(csv, 1).unwrap();
         assert_eq!(r.len(), 2);
-        assert_eq!(r[0], RepoEntry { id: "1".into(), path: "g/a".into(), nest: 1 });
-        assert_eq!(r[1], RepoEntry { id: "2".into(), path: "g/b".into(), nest: 3 });
+        assert_eq!(r[0], RepoEntry { id: "1".into(), url: "https://gitlab.com/g/a".into(), nest: 1 });
+        assert_eq!(r[1], RepoEntry { id: "2".into(), url: "https://gitlab.com/g/b".into(), nest: 3 });
     }
     #[test]
     fn parse_repos_skips_blank_and_comments() {
         let csv = "# header comment\n\n1,https://gitlab.com/g/a\n  # indented comment too\n2,https://gitlab.com/g/b,0\n";
-        let r = parse_repos_lines(csv, 1, "https://gitlab.com").unwrap();
+        let r = parse_repos_lines(csv, 1).unwrap();
         assert_eq!(r.len(), 2);
         assert_eq!(r[1].nest, 0);
     }
     #[test]
     fn parse_repos_default_nest_applied() {
-        let r = parse_repos_lines("1,https://gitlab.com/g/a\n", 5, "https://gitlab.com").unwrap();
+        let r = parse_repos_lines("1,https://gitlab.com/g/a\n", 5).unwrap();
         assert_eq!(r[0].nest, 5);
     }
     #[test]
     fn parse_repos_wrong_column_count_errors() {
-        assert!(parse_repos_lines("1,url,3,extra\n", 1, "https://gitlab.com").is_err());
-        assert!(parse_repos_lines("only_one_field\n", 1, "https://gitlab.com").is_err());
+        assert!(parse_repos_lines("1,url,3,extra\n", 1).is_err());
+        assert!(parse_repos_lines("only_one_field\n", 1).is_err());
     }
     #[test]
     fn parse_repos_bad_nest_errors() {
-        assert!(parse_repos_lines("1,https://gitlab.com/g/a,not_a_number\n", 1, "https://gitlab.com").is_err());
+        assert!(parse_repos_lines("1,https://gitlab.com/g/a,not_a_number\n", 1).is_err());
     }
     #[test]
     fn parse_repos_empty_id_errors() {
-        assert!(parse_repos_lines(",https://gitlab.com/g/a\n", 1, "https://gitlab.com").is_err());
+        assert!(parse_repos_lines(",https://gitlab.com/g/a\n", 1).is_err());
     }
     #[test]
-    fn parse_repos_mismatched_base_errors() {
-        assert!(parse_repos_lines("1,https://other.com/g/a\n", 1, "https://gitlab.com").is_err());
+    fn parse_repos_empty_url_errors() {
+        assert!(parse_repos_lines("1,\n", 1).is_err());
     }
     #[test]
     fn parse_repos_trims_whitespace() {
-        let r = parse_repos_lines("  1 , https://gitlab.com/g/a , 2 \n", 1, "https://gitlab.com").unwrap();
-        assert_eq!(r[0], RepoEntry { id: "1".into(), path: "g/a".into(), nest: 2 });
+        let r = parse_repos_lines("  1 , https://gitlab.com/g/a , 2 \n", 1).unwrap();
+        assert_eq!(r[0], RepoEntry { id: "1".into(), url: "https://gitlab.com/g/a".into(), nest: 2 });
     }
 
     // ---------- resolve_relative ----------

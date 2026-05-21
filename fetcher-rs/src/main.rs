@@ -23,7 +23,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config_path: PathBuf = env::args().nth(1).unwrap_or_else(|| "config.yml".into()).into();
     let cfg = load_config(&config_path)?;
     let repos_path = resolve_relative(&config_path, &cfg.repos_file);
-    let entries = load_repos(&repos_path, cfg.defaults.nest, &cfg.gitlab.url)?;
+    let entries = load_repos(&repos_path, cfg.defaults.nest)?;
     if entries.is_empty() {
         return Err(format!("no repos in {}", repos_path.display()).into());
     }
@@ -49,11 +49,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("output: {}", out_dir.display());
 
     for entry in &entries {
-        let meta = gitlab::fetch_project_meta(&client, base_url, &entry.path, token.as_deref())?;
+        // GitLab API は id でも path でも :id を受けるので、入力の id を一貫して使う。
+        let meta = gitlab::fetch_project_meta(&client, base_url, &entry.id, token.as_deref())
+            .map_err(|e| format!("fetch meta id={} ({}): {e}", entry.id, entry.url))?;
         let files = gitlab::list_tracked_files(
             &client,
             base_url,
-            &entry.path,
+            &entry.id,
             token.as_deref(),
             entry.nest,
             &targets,
@@ -66,7 +68,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let raw = gitlab::fetch_file(
                 &client,
                 base_url,
-                &meta.path_with_namespace,
+                &entry.id,
                 token.as_deref(),
                 &meta.default_branch,
                 &f.path,
