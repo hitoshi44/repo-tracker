@@ -41,7 +41,7 @@ GitLab API を使って、複数リポジトリの `.gitlab-ci.yml` / `package.j
 | ページング | しない。1 階層あたり 100 件超は非対応 (per_page=100 固定) |
 | 拾うファイル | `.gitlab-ci.yml`, `package.json`, `pom.xml`, `Dockerfile` |
 | レート制御 | 1 fetch ごとに 1 秒 sleep |
-| エラー処理 | API 呼び出し (HTTP) が失敗したら全体を失敗扱い。S3 への部分書き込みはしない。**parse 失敗は warning を出して raw のみ保存して続行** (pom.xml の方言で 1 ファイルが落ちて全 repo を巻き込むのを避けるため) |
+| エラー処理 | 2 段階で吸収。**(a) HTTP エラー (meta / tree / files API)** は repo 単位でスキップ (`warning: skip id=...`)。空 repository の 404 tree や個別 repo の権限失敗が全体を止めないように。**(b) parse 失敗** はファイル単位でスキップ相当 (`warning: parse ... failed`)、empty parsed で raw のみ保存して続行。S3 への部分書き込みはしない (全件メモリに集めて最後にまとめて書き出す)。 |
 | 履歴 | 持たない。毎回 S3 を上書き |
 
 探索範囲のイメージ (depth=1): `repo/package.json`, `repo/frontend/package.json` は拾う。`repo/services/api/backend/pom.xml` のような 2 階層以上は拾わない。特定 repo だけ深く掘りたい場合は config 側で `depth` を上書きする。

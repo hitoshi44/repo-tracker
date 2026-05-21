@@ -5,12 +5,14 @@ mod gitlab;
 mod parser;
 
 use chrono::Utc;
-use config::{load_config, load_repos, resolve_relative};
+use config::{load_config, load_repos, resolve_relative, RepoEntry};
 use model::{FileKind, ParsedFile, RawEntry, Repository, TrackedFile};
+use reqwest::blocking::Client;
 use serde::Serialize;
 use std::env;
+use std::error::Error;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Serialize)]
@@ -49,82 +51,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("repos:  {} ({} entries)", repos_path.display(), entries.len());
     println!("output: {}", out_dir.display());
 
+    let mut skipped = 0usize;
     for entry in &entries {
-        // GitLab API は id でも path でも :id を受けるので、入力の id を一貫して使う。
-        let meta = gitlab::fetch_project_meta(&client, base_url, &entry.id, token.as_deref())
-            .map_err(|e| format!("fetch meta id={} ({}): {e}", entry.id, entry.url))?;
-        let files = gitlab::list_tracked_files(
-            &client,
-            base_url,
-            &entry.id,
-            token.as_deref(),
-            entry.nest,
-            &targets,
-        )?;
-
-        // ファイル中身を取得して files/<repo_id>/<path>.json に書き出す。
-        // default_branch は ref としてここでだけ使い、Repository には載せない。
-        // 種別ごとに *_raws にも積んでおいて、後で *-raws.json にバンドル。
-        for f in &files {
-            let raw = gitlab::fetch_file(
-                &client,
-                base_url,
-                &entry.id,
-                token.as_deref(),
-                &meta.default_branch,
-                &f.path,
-            )?;
-            let raw_entry = RawEntry {
-                repo_id: meta.id,
-                path: f.path.clone(),
-                raw: raw.raw.clone(),
-            };
-            match f.kind {
-                FileKind::GitlabCi => ci_raws.push(raw_entry),
-                FileKind::PackageJson => pkg_raws.push(raw_entry),
-                FileKind::PomXml => pom_raws.push(raw_entry),
-                FileKind::Dockerfile => docker_raws.push(raw_entry),
+        match process_one_repo(
+            &client, base_url, token.as_deref(), entry, &targets, &out_dir, &fetched_at,
+        ) {
+            Ok(result) => {
+                ci_raws.extend(result.ci_raws);
+                pkg_raws.extend(result.pkg_raws);
+                pom_raws.extend(result.pom_raws);
+                docker_raws.extend(result.docker_raws);
+                file_count += result.files_written;
+                repositories.push(result.repo);
             }
-            // parse 失敗時は警告して empty parsed で続行 (raw のみ保存)。
-            // DESIGN「全体失敗」は緩めて、現実の pom.xml の方言などで他 repo まで巻き込まないようにした。
-            let parsed = match parser::parse(f.kind, &raw.raw) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!(
-                        "warning: parse {} ({:?}) failed: {e} — raw のみで続行",
-                        f.path, f.kind
-                    );
-                    ParsedFile::empty(f.kind)
-                }
-            };
-            let tracked = TrackedFile {
-                repo_id: meta.id,
-                path: f.path.clone(),
-                kind: f.kind,
-                blob_sha: raw.blob_sha,
-                size: raw.size,
-                raw: raw.raw,
-                parsed,
-            };
-            let out_path = out_dir
-                .join("files")
-                .join(meta.id.to_string())
-                .join(format!("{}.json", f.path));
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent)?;
+            Err(e) => {
+                eprintln!("warning: skip id={} ({}): {e}", entry.id, entry.url);
+                skipped += 1;
             }
-            fs::write(&out_path, serde_json::to_string_pretty(&tracked)?)?;
-            file_count += 1;
         }
-
-        repositories.push(Repository {
-            id: meta.id,
-            path: meta.path_with_namespace,
-            name: meta.name,
-            url: meta.web_url,
-            fetched_at: fetched_at.clone(),
-            files,
-        });
     }
 
     let repos_json = ReposJson {
@@ -153,8 +97,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     println!(
-        "wrote {}: repos.json, ci-raws.json ({}), pkg-raws.json ({}), pom-raws.json ({}), docker-raws.json ({}), and {} file(s) under files/",
+        "wrote {}: repos.json ({} ok, {} skipped), ci-raws.json ({}), pkg-raws.json ({}), pom-raws.json ({}), docker-raws.json ({}), and {} file(s) under files/",
         out_dir.display(),
+        repos_json.repos.len(),
+        skipped,
         ci_raws.len(),
         pkg_raws.len(),
         pom_raws.len(),
@@ -165,6 +111,95 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         println!("  {} ({} file(s))", r.path, r.files.len());
     }
     Ok(())
+}
+
+struct RepoResult {
+    repo: Repository,
+    ci_raws: Vec<RawEntry>,
+    pkg_raws: Vec<RawEntry>,
+    pom_raws: Vec<RawEntry>,
+    docker_raws: Vec<RawEntry>,
+    files_written: usize,
+}
+
+/// 1 repo 分の処理。HTTP エラーが起きたらそのまま Err を返す (呼び出し側でスキップ)。
+/// parse 失敗はファイル単位で吸収 (warning + raw のみ)。
+///
+/// ファイルは即時書き出し。失敗時に site/data/files/<id>/ にゴミが残るが、
+/// repos.json に該当 id が載らないのでフロントからは参照されない。
+fn process_one_repo(
+    client: &Client,
+    base_url: &str,
+    token: Option<&str>,
+    entry: &RepoEntry,
+    targets: &[&str],
+    out_dir: &Path,
+    fetched_at: &str,
+) -> Result<RepoResult, Box<dyn Error>> {
+    // GitLab API は id でも path でも :id を受けるので、入力の id を一貫して使う。
+    let meta = gitlab::fetch_project_meta(client, base_url, &entry.id, token)
+        .map_err(|e| format!("meta: {e}"))?;
+    let files = gitlab::list_tracked_files(client, base_url, &entry.id, token, entry.nest, targets)
+        .map_err(|e| format!("tree: {e}"))?;
+
+    let mut out = RepoResult {
+        repo: Repository {
+            id: meta.id,
+            path: meta.path_with_namespace.clone(),
+            name: meta.name.clone(),
+            url: meta.web_url.clone(),
+            fetched_at: fetched_at.to_string(),
+            files: files.clone(),
+        },
+        ci_raws: Vec::new(),
+        pkg_raws: Vec::new(),
+        pom_raws: Vec::new(),
+        docker_raws: Vec::new(),
+        files_written: 0,
+    };
+
+    for f in &files {
+        let raw = gitlab::fetch_file(client, base_url, &entry.id, token, &meta.default_branch, &f.path)
+            .map_err(|e| format!("file {}: {e}", f.path))?;
+        let raw_entry = RawEntry {
+            repo_id: meta.id,
+            path: f.path.clone(),
+            raw: raw.raw.clone(),
+        };
+        match f.kind {
+            FileKind::GitlabCi => out.ci_raws.push(raw_entry),
+            FileKind::PackageJson => out.pkg_raws.push(raw_entry),
+            FileKind::PomXml => out.pom_raws.push(raw_entry),
+            FileKind::Dockerfile => out.docker_raws.push(raw_entry),
+        }
+        // parse 失敗はここで吸収 (raw のみ保存して続行)。
+        let parsed = match parser::parse(f.kind, &raw.raw) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("warning: parse {} ({:?}) failed: {e} — raw のみで続行", f.path, f.kind);
+                ParsedFile::empty(f.kind)
+            }
+        };
+        let tracked = TrackedFile {
+            repo_id: meta.id,
+            path: f.path.clone(),
+            kind: f.kind,
+            blob_sha: raw.blob_sha,
+            size: raw.size,
+            raw: raw.raw,
+            parsed,
+        };
+        let out_path = out_dir
+            .join("files")
+            .join(meta.id.to_string())
+            .join(format!("{}.json", f.path));
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&out_path, serde_json::to_string_pretty(&tracked)?)?;
+        out.files_written += 1;
+    }
+    Ok(out)
 }
 
 fn main() -> ExitCode {

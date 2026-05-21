@@ -71,66 +71,20 @@ func run() error {
 		fileCount    int
 	)
 
+	skipped := 0
 	for _, entry := range entries {
-		// GitLab API は id でも path でも :id を受けるので、入力の id を一貫して使う。
-		meta, err := client.FetchProjectMeta(baseURL, entry.ID)
+		res, err := processOneRepo(client, baseURL, entry, targets, outDir, fetchedAt)
 		if err != nil {
-			return fmt.Errorf("fetch meta id=%s (%s): %w", entry.ID, entry.URL, err)
+			fmt.Fprintf(os.Stderr, "warning: skip id=%s (%s): %v\n", entry.ID, entry.URL, err)
+			skipped++
+			continue
 		}
-		files, err := client.ListTrackedFiles(baseURL, entry.ID, entry.Nest, targets)
-		if err != nil {
-			return fmt.Errorf("list tracked id=%s: %w", entry.ID, err)
-		}
-
-		for _, f := range files {
-			raw, err := client.FetchFile(baseURL, entry.ID, meta.DefaultBranch, f.Path)
-			if err != nil {
-				return fmt.Errorf("fetch file id=%s path=%s: %w", entry.ID, f.Path, err)
-			}
-			rawEntry := model.RawEntry{RepoID: meta.ID, Path: f.Path, Raw: raw.Raw}
-			switch f.Type {
-			case model.KindGitlabCi:
-				ciRaws = append(ciRaws, rawEntry)
-			case model.KindPackageJson:
-				pkgRaws = append(pkgRaws, rawEntry)
-			case model.KindPomXml:
-				pomRaws = append(pomRaws, rawEntry)
-			case model.KindDockerfile:
-				dockerRaws = append(dockerRaws, rawEntry)
-			}
-
-			// parse 失敗時は警告して empty parsed で続行 (raw のみ保存)。
-			parsed, err := parser.Parse(f.Type, raw.Raw)
-			if err != nil {
-				fmt.Fprintf(os.Stderr,
-					"warning: parse %s (%s) failed: %v — raw のみで続行\n",
-					f.Path, f.Type, err)
-				parsed = model.ParsedFor(f.Type)
-			}
-			tracked := model.TrackedFile{
-				RepoID:  meta.ID,
-				Path:    f.Path,
-				Type:    f.Type,
-				BlobSHA: raw.BlobSHA,
-				Size:    raw.Size,
-				Raw:     raw.Raw,
-				Parsed:  parsed,
-			}
-			outPath := filepath.Join(outDir, "files", fmt.Sprintf("%d", meta.ID), f.Path+".json")
-			if err := writeJSON(outPath, tracked); err != nil {
-				return err
-			}
-			fileCount++
-		}
-
-		repositories = append(repositories, model.Repository{
-			ID:        meta.ID,
-			Path:      meta.PathWithNamespace,
-			Name:      meta.Name,
-			URL:       meta.WebURL,
-			FetchedAt: fetchedAt,
-			Files:     files,
-		})
+		ciRaws = append(ciRaws, res.ciRaws...)
+		pkgRaws = append(pkgRaws, res.pkgRaws...)
+		pomRaws = append(pomRaws, res.pomRaws...)
+		dockerRaws = append(dockerRaws, res.dockerRaws...)
+		fileCount += res.filesWritten
+		repositories = append(repositories, res.repo)
 	}
 
 	rj := reposJson{FetchedAt: fetchedAt, Repos: repositories}
@@ -150,12 +104,95 @@ func run() error {
 		return err
 	}
 
-	fmt.Printf("wrote %s: repos.json, ci-raws.json (%d), pkg-raws.json (%d), pom-raws.json (%d), docker-raws.json (%d), and %d file(s) under files/\n",
-		outDir, len(ciRaws), len(pkgRaws), len(pomRaws), len(dockerRaws), fileCount)
+	fmt.Printf("wrote %s: repos.json (%d ok, %d skipped), ci-raws.json (%d), pkg-raws.json (%d), pom-raws.json (%d), docker-raws.json (%d), and %d file(s) under files/\n",
+		outDir, len(repositories), skipped, len(ciRaws), len(pkgRaws), len(pomRaws), len(dockerRaws), fileCount)
 	for _, r := range repositories {
 		fmt.Printf("  %s (%d file(s))\n", r.Path, len(r.Files))
 	}
 	return nil
+}
+
+type repoResult struct {
+	repo         model.Repository
+	ciRaws       []model.RawEntry
+	pkgRaws      []model.RawEntry
+	pomRaws      []model.RawEntry
+	dockerRaws   []model.RawEntry
+	filesWritten int
+}
+
+// 1 repo 分の処理。HTTP エラーは Err を返す (呼び出し側でスキップ)。
+// parse 失敗はファイル単位で吸収 (warning + raw のみ)。
+// ファイルは即時書き出し。失敗時にゴミが残るが、repos.json に該当 id が
+// 載らないのでフロントからは参照されない。
+func processOneRepo(
+	client *gitlab.Client,
+	baseURL string,
+	entry config.RepoEntry,
+	targets []string,
+	outDir, fetchedAt string,
+) (*repoResult, error) {
+	meta, err := client.FetchProjectMeta(baseURL, entry.ID)
+	if err != nil {
+		return nil, fmt.Errorf("meta: %w", err)
+	}
+	files, err := client.ListTrackedFiles(baseURL, entry.ID, entry.Nest, targets)
+	if err != nil {
+		return nil, fmt.Errorf("tree: %w", err)
+	}
+
+	res := &repoResult{
+		repo: model.Repository{
+			ID:        meta.ID,
+			Path:      meta.PathWithNamespace,
+			Name:      meta.Name,
+			URL:       meta.WebURL,
+			FetchedAt: fetchedAt,
+			Files:     files,
+		},
+	}
+
+	for _, f := range files {
+		raw, err := client.FetchFile(baseURL, entry.ID, meta.DefaultBranch, f.Path)
+		if err != nil {
+			return nil, fmt.Errorf("file %s: %w", f.Path, err)
+		}
+		rawEntry := model.RawEntry{RepoID: meta.ID, Path: f.Path, Raw: raw.Raw}
+		switch f.Type {
+		case model.KindGitlabCi:
+			res.ciRaws = append(res.ciRaws, rawEntry)
+		case model.KindPackageJson:
+			res.pkgRaws = append(res.pkgRaws, rawEntry)
+		case model.KindPomXml:
+			res.pomRaws = append(res.pomRaws, rawEntry)
+		case model.KindDockerfile:
+			res.dockerRaws = append(res.dockerRaws, rawEntry)
+		}
+
+		// parse 失敗時は警告して empty parsed で続行 (raw のみ保存)。
+		parsed, perr := parser.Parse(f.Type, raw.Raw)
+		if perr != nil {
+			fmt.Fprintf(os.Stderr,
+				"warning: parse %s (%s) failed: %v — raw のみで続行\n",
+				f.Path, f.Type, perr)
+			parsed = model.ParsedFor(f.Type)
+		}
+		tracked := model.TrackedFile{
+			RepoID:  meta.ID,
+			Path:    f.Path,
+			Type:    f.Type,
+			BlobSHA: raw.BlobSHA,
+			Size:    raw.Size,
+			Raw:     raw.Raw,
+			Parsed:  parsed,
+		}
+		outPath := filepath.Join(outDir, "files", fmt.Sprintf("%d", meta.ID), f.Path+".json")
+		if err := writeJSON(outPath, tracked); err != nil {
+			return nil, err
+		}
+		res.filesWritten++
+	}
+	return res, nil
 }
 
 func writeJSON(path string, v any) error {

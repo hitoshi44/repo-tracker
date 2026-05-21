@@ -121,6 +121,9 @@ pub fn parse_repos_lines(
 
 /// `https://gitlab.com/group/repo[.git][/]` → `group/repo`。
 /// gitlab_url の prefix を剥がし、末尾 `/` と `.git` を落とす。
+///
+/// 現在の fetcher は API を id で叩くため未使用だが、別ユースケース用に残しておく。
+#[allow(dead_code)]
 pub fn url_to_path(url: &str, gitlab_url: &str) -> Result<String, String> {
     let url = url.trim();
     let base = gitlab_url.trim().trim_end_matches('/');
