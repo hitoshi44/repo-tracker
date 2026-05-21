@@ -6,6 +6,7 @@ site/data/
 
 # scratch / experiments
 scratch/
+src/out/
 
 # fetcher local config (use *.example.* as templates)
 config.yml
