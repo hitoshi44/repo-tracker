@@ -1,5 +1,5 @@
 import { loadAndBuildRows } from '../ci_includes.js';
-import { html, escapeHtml, raw } from '../render.js';
+import { html } from '../render.js';
 
 export async function render() {
   const rows = await loadAndBuildRows();
@@ -12,17 +12,9 @@ export async function render() {
     `;
   }
 
-  // 表に出てくる type の一覧 (動的) を集めて select の選択肢に
-  const types = Array.from(new Set(rows.map(r => r.type))).sort();
-  const typeOpts = ['<option value="all">すべての type</option>']
-    .concat(types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`))
-    .join('');
-
   const tbody = rows.map(r => html`
-    <tr data-repo-path="${r.repo_path}" data-path="${r.path}" data-type="${r.type}" data-ref="${r.ref}">
+    <tr data-repo-path="${r.repo_path}" data-ref="${r.ref}">
       <td><a href="#/repo/${r.repo_id}">${r.repo_path}</a></td>
-      <td class="path"><a href="#/file/${r.repo_id}/${encodeURIComponent(r.path)}">${r.path}</a></td>
-      <td>${r.type}</td>
       <td>${r.ref}</td>
     </tr>
   `).join('');
@@ -32,12 +24,12 @@ export async function render() {
     <section>
       <h2>CI 呼び出し</h2>
       <form id="ci-filter" class="filter-form" onsubmit="return false;">
-        <input type="text" name="q" placeholder="フィルタ (repo / path / 参照先)" autofocus>
-        <select name="type">${typeOpts}</select>
+        <input type="text" name="repo" placeholder="repository フィルタ" autofocus>
+        <input type="text" name="ref" placeholder="参照先 フィルタ">
         <span class="filter-count"><span id="ci-filter-count">${total}</span> / ${total}</span>
       </form>
       <table id="ci-table">
-        <thead><tr><th>repo</th><th>file</th><th>type</th><th>参照先</th></tr></thead>
+        <thead><tr><th>repository</th><th>参照先</th></tr></thead>
         <tbody>${tbody}</tbody>
       </table>
     </section>
@@ -46,12 +38,11 @@ export async function render() {
 }
 
 // 純関数: 1 行が表示対象かを判定 (テスト対象)
-export function matches(row, query, type) {
-  if (type && type !== 'all' && row.type !== type) return false;
-  if (!query) return true;
-  const q = query.toLowerCase();
-  return ['repo_path', 'path', 'type', 'ref']
-    .some(k => (row[k] || '').toLowerCase().includes(q));
+// repoQuery は repo_path のみ、refQuery は ref のみに対する部分一致 (大小無視)
+export function matches(row, repoQuery, refQuery) {
+  if (repoQuery && !(row.repo_path || '').toLowerCase().includes(repoQuery.toLowerCase())) return false;
+  if (refQuery && !(row.ref || '').toLowerCase().includes(refQuery.toLowerCase())) return false;
+  return true;
 }
 
 function bindFilter(total) {
@@ -62,17 +53,15 @@ function bindFilter(total) {
   const countEl = document.getElementById('ci-filter-count');
 
   function apply() {
-    const q = form.querySelector('input[name=q]').value;
-    const t = form.querySelector('select[name=type]').value;
+    const repoQ = form.querySelector('input[name=repo]').value;
+    const refQ = form.querySelector('input[name=ref]').value;
     let visible = 0;
     for (const tr of trs) {
       const row = {
         repo_path: tr.dataset.repoPath,
-        path: tr.dataset.path,
-        type: tr.dataset.type,
         ref: tr.dataset.ref,
       };
-      const show = matches(row, q, t);
+      const show = matches(row, repoQ, refQ);
       tr.style.display = show ? '' : 'none';
       if (show) visible++;
     }

@@ -124,35 +124,36 @@ test('finds project include', () => {
 
 suite('ci_includes.buildRows');
 
-test('flattens all includes', () => {
+test('extracts only project-type includes', () => {
   const rows = buildRows(incItems);
-  assertEq(rows.length, 3);
-  assertEq(rows[0].type, 'local');
-  assertEq(rows[1].type, 'template');
-  assertEq(rows[2].type, 'project');
+  assertEq(rows.length, 1);
+  assertEq(rows[0].repo_path, 'g/b');
+  assertEq(rows[0].ref, 'group/t@main: java.yml');
 });
 
 suite('ci_includes filter: matches');
 
-const row = { repo_path: 'g/a', path: '.gitlab-ci.yml', type: 'template', ref: 'Jobs/SAST.gitlab-ci.yml' };
+const row = { repo_path: 'g/a', ref: 'group/t@main: java.yml' };
 
-test('empty query + all type → show', () => {
-  assertEq(ciMatches(row, '', 'all'), true);
+test('empty filters → show', () => {
+  assertEq(ciMatches(row, '', ''), true);
 });
-test('type filter excludes mismatching rows', () => {
-  assertEq(ciMatches(row, '', 'local'), false);
-  assertEq(ciMatches(row, '', 'template'), true);
+test('repo filter matches repo_path only', () => {
+  assertEq(ciMatches(row, 'g/a', ''), true);
+  assertEq(ciMatches(row, 'g/b', ''), false);
+  assertEq(ciMatches(row, 'group', ''), false); // ref に含まれるが repo_path には無い
 });
-test('query searches across columns', () => {
-  assertEq(ciMatches(row, 'SAST', 'all'), true);
-  assertEq(ciMatches(row, 'g/a', 'all'), true);
-  assertEq(ciMatches(row, 'template', 'all'), true);
-  assertEq(ciMatches(row, 'nope', 'all'), false);
+test('ref filter matches ref only', () => {
+  assertEq(ciMatches(row, '', 'java'), true);
+  assertEq(ciMatches(row, '', 'python'), false);
+  assertEq(ciMatches(row, '', 'g/a'), false); // repo_path には含まれるが ref には無い
 });
-test('query is case insensitive', () => {
-  assertEq(ciMatches(row, 'sast', 'all'), true);
+test('both filters combined (AND)', () => {
+  assertEq(ciMatches(row, 'g/a', 'java'), true);
+  assertEq(ciMatches(row, 'g/a', 'python'), false);
+  assertEq(ciMatches(row, 'g/b', 'java'), false);
 });
-test('query + type combined (AND)', () => {
-  assertEq(ciMatches(row, 'SAST', 'template'), true);
-  assertEq(ciMatches(row, 'SAST', 'local'), false);
+test('filters are case insensitive', () => {
+  assertEq(ciMatches(row, 'G/A', ''), true);
+  assertEq(ciMatches(row, '', 'JAVA'), true);
 });

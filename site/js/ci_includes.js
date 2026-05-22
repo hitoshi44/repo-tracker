@@ -10,16 +10,17 @@ export function isImplemented() {
 }
 
 // 純関数: items は [{repo, file}]。テスト用。
+// project 型の include のみ抽出する (他の type は対象外)。
 export function buildRows(items) {
   const out = [];
   for (const { repo, file } of items) {
     const includes = (file.parsed || {}).includes || [];
     for (const inc of includes) {
+      if (inc.type !== 'project') continue;
       out.push({
         repo_id: repo.id,
         repo_path: repo.path,
         path: file.path,
-        type: inc.type,
         ref: describeInclude(inc),
       });
     }

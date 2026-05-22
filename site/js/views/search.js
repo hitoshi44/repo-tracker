@@ -1,4 +1,4 @@
-import { loadCiRaws, loadPkgRaws, loadPomRaws, loadDockerRaws } from '../store.js';
+import { loadRepos, loadCiRaws, loadPkgRaws, loadPomRaws, loadDockerRaws } from '../store.js';
 import { grep, highlightPositions } from '../grep.js';
 import { html, escapeHtml, raw } from '../render.js';
 import { buildQuery } from '../router.js';
@@ -53,14 +53,18 @@ async function renderGrepResults(q, enabledKinds, caseSensitive) {
   const hits = grep(sources, q, { caseSensitive });
   if (hits.length === 0) return `<p>マッチなし</p>`;
 
+  const repos = (await loadRepos()).repos || [];
+  const repoPathById = new Map(repos.map(r => [r.id, r.path]));
+
   const items = hits.map(h => {
     const positions = highlightPositions(h.line, q, caseSensitive);
     const lineHtml = highlightLine(h.line, positions);
+    const repoLabel = repoPathById.get(h.repo_id) || `repo ${h.repo_id}`;
     return html`
       <div class="match">
         <div class="match-header">
           <span class="kind">${h.kind}</span> &middot;
-          <a href="#/file/${h.repo_id}/${encodeURIComponent(h.path)}">repo ${h.repo_id} / <span class="path">${h.path}</span></a>
+          <a href="#/file/${h.repo_id}/${encodeURIComponent(h.path)}">${repoLabel} / <span class="path">${h.path}</span></a>
           : line ${h.line_no}
         </div>
         <pre>${raw(lineHtml)}</pre>

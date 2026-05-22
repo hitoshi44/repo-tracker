@@ -1,4 +1,4 @@
-import { loadFile } from '../store.js';
+import { loadFile, loadRepos } from '../store.js';
 import { html, escapeHtml, raw } from '../render.js';
 
 export async function render({ id, path }) {
@@ -9,12 +9,16 @@ export async function render({ id, path }) {
     return `<p>load error: ${escapeHtml(e.message)}</p>`;
   }
 
+  const repos = ((await loadRepos()).repos) || [];
+  const repo = repos.find(r => String(r.id) === String(id));
+  const repoLabel = repo ? repo.path : `repo ${id}`;
+
   document.title = `${path} — Repo Tracker`;
 
   return html`
     <section class="file-detail">
       <div class="crumbs">
-        <a href="#/repo/${id}">← repo ${id}</a>
+        <a href="#/repo/${id}">← ${repoLabel}</a>
       </div>
       <h2 class="path">${path}</h2>
       <p class="meta">type: ${file.type} &middot; size: ${file.size} B &middot; blob_sha: <code>${file.blob_sha}</code></p>
