@@ -17,12 +17,10 @@ export async function render() {
       </tr>`;
   }).join('');
 
-  document.getElementById('footer-meta').textContent =
-    `fetched_at: ${data.fetched_at} / ${repos.length} repo(s)`;
-
   return `
     <section>
       <h2>リポジトリ一覧</h2>
+      <p class="list-meta">fetched_at: ${escapeHtml(data.fetched_at || '')} / ${repos.length} repo(s)</p>
       <table>
         <thead>
           <tr><th>repo</th><th class="count">ci</th><th class="count">pkg</th><th class="count">pom</th><th class="count">docker</th><th></th></tr>
